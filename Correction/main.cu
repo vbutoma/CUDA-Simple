@@ -12,8 +12,8 @@ using namespace std;
 #include <opencv2/highgui/highgui.hpp>
 
 
-string sample_file = "/home/vitaly/crops_for_quilting_resized/3553547177614f656358663945623164.png_crop_area.png";
-string image_file = "/home/vitaly/output/3553547177614f656358663945623164.png_crop_area.png";
+string sample_file = "../Data/Images/sample.png";
+string image_file = "../Data/Images/texture.png";
 
 cv::Mat sample;
 cv::Mat image;
@@ -27,5 +27,6 @@ void initData(const string & sfile, const string & imfile){
 int main(int argc, char **argv) {
 	initData(sample_file, image_file);
 	correctionGPU(sample, image, 17, 17);
+	cout << "EXIT MAIN" << endl;
 	return 0;
 }

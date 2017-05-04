@@ -56,6 +56,16 @@ __global__ void correctionKernel(uchar * a_patch,
 	}
 }
 
+
+__global__ void minimumKernel(uchar * res, const int patch_size,
+const int n, const int m){
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if ((i >= patch_size) && (i < n - patch_size-1) && (j < m - patch_size-1) && (j >= patch_size)){
+	}
+}
+
 void correctionGPU(cv::Mat sample, cv::Mat image, int patch_size, int border){
 	// GRAY SCALE IMAGES
 	assert(patch_size == border);
@@ -85,9 +95,10 @@ void correctionGPU(cv::Mat sample, cv::Mat image, int patch_size, int border){
 	uchar *d_patch, *d_sample, *d_result;
 	const int patchBytes = (patch_size * 2 + 1) * (patch_size * 2 + 1) + sizeof(uchar);
 	const int sampleBytes = N * M * sizeof(uchar);
+	const int resultBytes = N * M * sizeof(uchar);
 	SAFE_CALL(cudaMalloc((void**)&d_patch, patchBytes), "CUDA Malloc Failed");
 	SAFE_CALL(cudaMalloc((void**)&d_sample, sampleBytes), "CUDA Malloc Failed");
-	SAFE_CALL(cudaMalloc((void**)&d_result, sampleBytes), "CUDA Malloc Failed");
+	SAFE_CALL(cudaMalloc((void**)&d_result, resultBytes), "CUDA Malloc Failed");
 	SAFE_CALL(cudaMemcpy(d_sample, sampleMatrix, sampleBytes,cudaMemcpyHostToDevice),"CUDA Memcpy Host To Device Failed");
 
 	int patchn = (patch_size * 2 + 1);
@@ -113,15 +124,29 @@ void correctionGPU(cv::Mat sample, cv::Mat image, int patch_size, int border){
 			ans = 1000; // infinity
 			SAFE_CALL(cudaMemcpy(d_patch, patchMatrix, patchBytes,cudaMemcpyHostToDevice),"CUDA Memcpy Host To Device Failed");
 			correctionKernel<<<grid, block>>>(d_patch, d_sample, d_result, patch_size, N, M);
+			minimumKernel<<<grid, block>>>(d_result, patch_size, N, M);
 		}
 	}
 
 	timer.Stop();
 	printf("GPU code ran in: %f msecs.\n", timer.Elapsed());
+	for (int i = 0; i < sample.rows; i++){
+		delete [] imageMatrix[i];
+  }
 
-	SAFE_CALL(cudaFree(d_patch),"CUDA Free Failed");
+	delete [] imageMatrix;
+
+	for (int i = 0; i < sample.rows; i++){
+		delete [] sampleMatrix[i];
+  }
+	delete [] sampleMatrix;
+
+
+
+	SAFE_CALL(cudaFree(d_result),"CUDA Free Failed");
 	SAFE_CALL(cudaFree(d_sample),"CUDA Free Failed");
-	
+	SAFE_CALL(cudaFree(d_patch),"CUDA Free Failed");
+	cout << "EXIT" << endl;
 }
 
 #endif /* CORRECTION_CUH_ */
