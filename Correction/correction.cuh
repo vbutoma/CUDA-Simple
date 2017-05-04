@@ -53,18 +53,52 @@ __global__ void correctionKernel(uchar * a_patch,
 			}
 		}
 		c_result[i * m + j] = (uchar)temp;
+	}else {
+		// if ((i < n) && (j < m)) c_result[i * m + j] = 255;
 	}
 }
 
+extern __shared__ uchar sMins[];
+extern __shared__ int posMins[];
 
-__global__ void minimumKernel(uchar * res, const int patch_size,
-const int n, const int m){
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+__global__ void minimumKernel(uchar & output, uchar * res, const int patch_size, int n, int m){
 
-	if ((i >= patch_size) && (i < n - patch_size-1) && (j < m - patch_size-1) && (j >= patch_size)){
+	sMins[threadIdx.x] = (uchar)res[0];
+	posMins[threadIdx.x] = 0;
+	int xi, xj;
+	for (xi = blockIdx.x; xi < n; xi += gridDim.x){
+		int vectorBase = xi * n;
+		int vectorEnd = vectorBase + n;
+		xj = vectorBase + threadIdx.x;
+		while ((xj < vectorEnd) && (xj < (n-1)*m)){
+			xj += blockDim.x;
+			register unsigned char d = res[xj];
+			if (d < sMins[threadIdx.x]){
+				sMins[threadIdx.x] = (uchar)d;
+				posMins[threadIdx.x] = (int)xj;
+			}
+		}
 	}
+
+	__syncthreads();
+	if (threadIdx.x == 0){
+		register unsigned char min_value = sMins[0];
+		register int min_pos = posMins[0];
+		for (xj = 1; xj < blockDim.x; xj++){
+			if (min_value > sMins[xj]){
+				min_value = sMins[xj];
+				min_pos = posMins[xj];
+			}
+		}
+		if (min_value < output){
+			output = min_value;
+		}
+
+	}
+
+	__syncthreads();
 }
+
 
 void correctionGPU(cv::Mat sample, cv::Mat image, int patch_size, int border){
 	// GRAY SCALE IMAGES
@@ -109,7 +143,7 @@ void correctionGPU(cv::Mat sample, cv::Mat image, int patch_size, int border){
 		patchMatrix[i] = new uchar[patchm];
   }
 	cout << image.rows << " " << image.cols << endl;
-	int ans;
+
 	for (int i = border; i < image.rows - border; i++){
 		for (int j = border; j < image.cols - border; j++){
 			cv::Point patch_tl(std::max(j - patch_size, 0), std::max(i - patch_size, 0));
@@ -121,10 +155,13 @@ void correctionGPU(cv::Mat sample, cv::Mat image, int patch_size, int border){
 				for (int l = 0; l < tex_patch.cols; l++)
 					patchMatrix[k][l] = (uchar)*pixel++;
 			}
-			ans = 1000; // infinity
+
 			SAFE_CALL(cudaMemcpy(d_patch, patchMatrix, patchBytes,cudaMemcpyHostToDevice),"CUDA Memcpy Host To Device Failed");
+			uchar ans1 = (uchar)255;
 			correctionKernel<<<grid, block>>>(d_patch, d_sample, d_result, patch_size, N, M);
-			minimumKernel<<<grid, block>>>(d_result, patch_size, N, M);
+			//SAFE_CALL(cudaMemcpy())
+			//minimumKernel<<<N, N, 512 * (sizeof(int) + sizeof(uchar))>>>(ans1, d_result, patch_size, N, M);
+			//cout << (int)ans1 << " ";
 		}
 	}
 
